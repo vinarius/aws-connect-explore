@@ -1,11 +1,11 @@
-import { Connect, AWSError, Response, Lambda, STS } from 'aws-sdk';
+import { Connect, AWSError, Response, Lambda, STS, Credentials } from 'aws-sdk';
 
-const LowerEnvConnect = new Connect({
+const SourceEnvConnect = new Connect({
   apiVersion: '2017-08-08',
   region: process.env['REGION']
 });
 
-const HigherEnvConnect = new Connect({
+const DestinationEnvConnect = new Connect({
   apiVersion: '2017-08-08',
   region: process.env['REGION']
 });
@@ -34,7 +34,7 @@ export class VFConnect {
     this.validateEnvVars();
 
     const lambdaAssociations: Promise<{$response: Response<{}, AWSError>}>[] = lambdaArns.map(arn => {
-      return LowerEnvConnect.associateLambdaFunction({
+      return SourceEnvConnect.associateLambdaFunction({
         FunctionArn: arn,
         InstanceId: instanceId
       }).promise();
@@ -61,45 +61,54 @@ export class VFConnect {
 
     this.validateEnvVars();
 
-
     // need the contact flow id to get its content, therefore list flows and map to name
 
-    const contactFlows: Connect.ListContactFlowsResponse = await LowerEnvConnect.listContactFlows({
+    const sourceContactFlows: Connect.ListContactFlowsResponse = await SourceEnvConnect.listContactFlows({
       InstanceId: instanceId
     }).promise();
 
-    const flowId: string = contactFlows.ContactFlowSummaryList.find(flow => flow.Name === flowName).Id;
+    const flowId: string = sourceContactFlows.ContactFlowSummaryList.find(flow => flow.Name === flowName).Id;
 
-    const contactFlowData: Connect.DescribeContactFlowResponse = await LowerEnvConnect.describeContactFlow({
+    const sourceContactFlowData: Connect.DescribeContactFlowResponse = await SourceEnvConnect.describeContactFlow({
       ContactFlowId: flowId,
       InstanceId: instanceId
     }).promise();
 
-    const contactFlowContent: string = contactFlowData.ContactFlow.Content;
+    const sourceContactFlowContent: string = sourceContactFlowData.ContactFlow.Content;
+
+    console.log('sourceContactFlowContent:', sourceContactFlowContent);
 
     // 'lambda-001-sam-dev-get-assigned-analyst'
     // 'lambda-001-sam-qa-get-assigned-analyst'
 
+    const destinationCredentials: STS.Credentials = await this.assumeRole();
+
+    const DestinationEnvConnect = new Connect({
+      credentials: new Credentials({
+        accessKeyId: destinationCredentials.AccessKeyId,
+        secretAccessKey: destinationCredentials.SecretAccessKey
+      })
+    });
+
     console.log('describeContactFlow completed successfully');
   }
 
-  public async testSTS() {
+  private async assumeRole(): Promise<STS.Credentials> {
     process.env['AWS_PROFILE'] = 'vf-team7';
     const foo = await AwsSTS.assumeRole({
       RoleArn: 'arn:aws:iam::538718130184:role/kraus-test-cross-account',
       RoleSessionName: 'pipeline-session'
     }).promise();
 
-
-    console.log(foo.Credentials);
+    return foo.Credentials;
   }
 
   private validateEnvVars() {
     const unsetEnvVars: string[] = [];
     if(!process.env['AWS_PROFILE']) unsetEnvVars.push('AWS_PROFILE');
     if(!process.env['REGION']) unsetEnvVars.push('REGION');
-    if(!process.env['LOWER_STAGE']) unsetEnvVars.push('LOWER_STAGE');
-    if(!process.env['HIGHER_STAGE']) unsetEnvVars.push('HIGHER_STAGE');
+    if(!process.env['SOURCE_ENV']) unsetEnvVars.push('SOURCE_ENV');
+    if(!process.env['DESTINATION_ENV']) unsetEnvVars.push('DESTINATION_ENV');
     if(unsetEnvVars.length > 0) throw new Error(`The following environment variables must be set:\n${unsetEnvVars.join(' ')}`);
   }
 }
