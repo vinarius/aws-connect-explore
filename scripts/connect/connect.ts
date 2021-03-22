@@ -1,18 +1,13 @@
 import { Connect, AWSError, Response, Lambda, STS } from 'aws-sdk';
 
-const AwsConnect = new Connect({
+const LowerEnvConnect = new Connect({
   apiVersion: '2017-08-08',
   region: process.env['REGION']
 });
 
-const AwsLambda = new Lambda({
-  apiVersion: '',
-  region: process.env['REGION'],
-  // credentials: new Credentials({
-  //   accessKeyId: '',
-  //   secretAccessKey: '',
-  //   sessionToken: ''
-  // })
+const HigherEnvConnect = new Connect({
+  apiVersion: '2017-08-08',
+  region: process.env['REGION']
 });
 
 const AwsSTS = new STS({
@@ -39,7 +34,7 @@ export class VFConnect {
     this.validateEnvVars();
 
     const lambdaAssociations: Promise<{$response: Response<{}, AWSError>}>[] = lambdaArns.map(arn => {
-      return AwsConnect.associateLambdaFunction({
+      return LowerEnvConnect.associateLambdaFunction({
         FunctionArn: arn,
         InstanceId: instanceId
       }).promise();
@@ -69,13 +64,13 @@ export class VFConnect {
 
     // need the contact flow id to get its content, therefore list flows and map to name
 
-    const contactFlows: Connect.ListContactFlowsResponse = await AwsConnect.listContactFlows({
+    const contactFlows: Connect.ListContactFlowsResponse = await LowerEnvConnect.listContactFlows({
       InstanceId: instanceId
     }).promise();
 
     const flowId: string = contactFlows.ContactFlowSummaryList.find(flow => flow.Name === flowName).Id;
 
-    const contactFlowData: Connect.DescribeContactFlowResponse = await AwsConnect.describeContactFlow({
+    const contactFlowData: Connect.DescribeContactFlowResponse = await LowerEnvConnect.describeContactFlow({
       ContactFlowId: flowId,
       InstanceId: instanceId
     }).promise();
