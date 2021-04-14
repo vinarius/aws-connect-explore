@@ -22,7 +22,7 @@ const AwsSTS = new STS({
 });
 
 export class VFConnect {
-  public async associateLambdas(lambdaArns: string[], instanceId: string): Promise<{ $response: Response<{}, AWSError>; }[]> {
+  public async associateLambdas(lambdaNames: string[], instanceId: string): Promise<{ $response: Response<{}, AWSError>; }[]> {
     this.validateEnvVars();
 
     // Filter out any lambda arns passed in that are already associated.
@@ -30,6 +30,10 @@ export class VFConnect {
       InstanceId: instanceId,
       MaxResults: 1000
     }).promise();
+
+    const lambdaArns = currentLambdas?.LambdaFunctions?.filter((lambdaArn: Connect.FunctionArn) => {
+      
+    });
     
     const unassociatedLambdas: string[] = lambdaArns.filter(arn => !currentLambdas.LambdaFunctions?.includes(arn));
 
