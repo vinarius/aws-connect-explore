@@ -6,6 +6,8 @@ import { VFConnect } from './connect';
   const krausFooLambdaArn: string = 'arn:aws:lambda:us-east-1:521208942562:function:kraus-team7-foo';
   const krausBarLambdaArn: string = 'arn:aws:lambda:us-east-1:521208942562:function:kraus-team7-bar';
   const flowName: string = '_krausTest';
+  const flowName2: string = '_krausTest2';
+  const flowNames = [flowName, flowName2];
   
   const vfConnect = new VFConnect();
   // vfConnect.associateLambdas(
@@ -22,7 +24,7 @@ import { VFConnect } from './connect';
       sourceInstanceId: krausTeam7InstanceId,
       destinationInstanceId: krausTeam9InstanceId,
       assumeRoleArn: 'arn:aws:iam::538718130184:role/kraus-test-cross-account',
-      flowName,
+      flowNames,
     }
   );
 
