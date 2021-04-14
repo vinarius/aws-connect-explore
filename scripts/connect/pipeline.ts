@@ -10,12 +10,7 @@ import { VFConnect } from './connect';
   const flowNames = [flowName, flowName2];
   
   const vfConnect = new VFConnect();
-  // vfConnect.associateLambdas(
-  //   [
-  //   krausFooLambdaArn,
-  //   krausBarLambdaArn
-  // ],
-  // krausTeam7InstanceId);
+  // vfConnect.associateLambdas(flowNames, krausTeam7InstanceId);
 
   // console.log('Lambdas associated successfully');
 
