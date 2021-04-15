@@ -1,4 +1,4 @@
-import { Connect, AWSError, Response, STS, Credentials } from 'aws-sdk';
+import { Connect, STS, Lambda, Response, AWSError, Credentials } from 'aws-sdk';
 
 interface IPromoteContactFlowProps {
   sourceInstanceId: string;
@@ -9,38 +9,94 @@ interface IPromoteContactFlowProps {
 
 const SourceEnvConnect = new Connect({
   apiVersion: '2017-08-08',
-  region: process.env['REGION']
+  region: process.env['SOURCE_REGION']
 });
 
-const DestinationEnvConnect = new Connect({
-  apiVersion: '2017-08-08',
-  region: process.env['REGION']
+const SourceEnvLambda = new Lambda({
+  apiVersion: '2015-03-31',
+  region: process.env['SOURCE_REGION']
 });
 
 const AwsSTS = new STS({
-  region: process.env['REGION']
+  region: process.env['SOURCE_REGION']
 });
 
+interface IAssociateLambdaProps {
+  inputLambdaNames: string[];
+  destinationInstanceId: string;
+  assumeRoleArn: string;
+  profile: string;
+  destinationRegion: string;
+}
+
 export class VFConnect {
-  public async associateLambdas(lambdaNames: string[], instanceId: string): Promise<{ $response: Response<{}, AWSError>; }[]> {
+  public async associateLambdas(props: IAssociateLambdaProps): Promise<{ $response: Response<{}, AWSError>; }[]> {
     this.validateEnvVars();
 
-    // Filter out any lambda arns passed in that are already associated.
-    const currentLambdas: Connect.ListLambdaFunctionsResponse = await SourceEnvConnect.listLambdaFunctions({
-      InstanceId: instanceId,
-      MaxResults: 1000
-    }).promise();
+    const {
+      assumeRoleArn,
+      inputLambdaNames,
+      destinationInstanceId,
+      profile,
+      destinationRegion
+    } = props;
 
-    const lambdaArns = currentLambdas?.LambdaFunctions?.filter((lambdaArn: Connect.FunctionArn) => {
-      
+    const {AccessKeyId, SecretAccessKey, SessionToken}: STS.Credentials = await this.assumeDestinationRole(assumeRoleArn, profile);
+    const credentials = new Credentials({
+      accessKeyId: AccessKeyId,
+      secretAccessKey: SecretAccessKey,
+      sessionToken: SessionToken
     });
-    
-    const unassociatedLambdas: string[] = lambdaArns.filter(arn => !currentLambdas.LambdaFunctions?.includes(arn));
 
-    const lambdaAssociations: Promise<{$response: Response<{}, AWSError>}>[] = unassociatedLambdas.map(arn => {
-      return SourceEnvConnect.associateLambdaFunction({
+    const DestinationEnvConnect = new Connect({credentials, region: destinationRegion});
+    const DestinationEnvLambda = new Lambda({credentials, region: destinationRegion});
+
+    // Get all lambda functions based on name
+    const allLambdaFunctions: Lambda.FunctionList = [];
+    let nextToken = undefined;
+    do {
+      const params: Lambda.ListFunctionsRequest = {MaxItems: 1000};
+      if(nextToken) {
+        params.Marker = nextToken;
+      }
+      const {Functions, NextMarker} = await DestinationEnvLambda.listFunctions(params).promise();
+      nextToken = NextMarker;
+      Functions?.forEach(lambda => allLambdaFunctions.push(lambda));
+    } while (nextToken)
+
+    // Verify all requested lambda functions exist in destination account.
+    const missingLambdas: string[] = inputLambdaNames.filter(name => !allLambdaFunctions.some(lambda => lambda.FunctionName === name));
+    if(missingLambdas.length > 0) {
+      throw new Error(`The following lambdas do not exist in the destination account:\n${missingLambdas.join(' ')}\n`);
+    }
+    
+    // Map name to arn
+    const targetLambdaArns: string[] = allLambdaFunctions.filter(lambda => inputLambdaNames.includes(lambda.FunctionName as string))
+      .map(lambda => lambda.FunctionArn as string);
+      
+    // Get all lambda arns that are already associated with connect
+    let connectLambdaArns: Connect.FunctionArnsList = [];
+    nextToken = undefined;
+    do {
+      const params: Connect.ListLambdaFunctionsRequest = {
+        InstanceId: destinationInstanceId,
+        MaxResults: 25 // Max is 25 for this api.
+      }
+      if(nextToken) {
+        params.NextToken = nextToken;
+      }
+      const {LambdaFunctions, NextToken} = await DestinationEnvConnect.listLambdaFunctions(params).promise();
+      nextToken = NextToken;
+      LambdaFunctions?.forEach(lambdaArn => connectLambdaArns.push(lambdaArn));
+    } while (nextToken)
+
+    // Filter out any lambda arns passed in that are already associated.
+    const unassociatedLambdaArns = targetLambdaArns?.filter((lambdaArn: string) => !connectLambdaArns.includes(lambdaArn));
+
+    const lambdaAssociations: Promise<{ $response: Response<{}, AWSError>; }>[] = unassociatedLambdaArns.map(arn => {
+      return DestinationEnvConnect.associateLambdaFunction({
         FunctionArn: arn,
-        InstanceId: instanceId
+        InstanceId: destinationInstanceId
       }).promise();
     });
     
@@ -97,19 +153,19 @@ export class VFConnect {
     console.log('describeContactFlow completed successfully');
   }
 
-  private async assumeDestinationRole(roleArn: string): Promise<STS.Credentials> {
-    const assumeRoleResponse: STS.AssumeRoleResponse = await AwsSTS.assumeRole({
+  private async assumeDestinationRole(roleArn: string, deployProfile: string): Promise<STS.Credentials> {
+    const {Credentials} = await AwsSTS.assumeRole({
       RoleArn: roleArn,
-      RoleSessionName: `pipeline-session-${new Date()}` // TODO: discuss naming this with team
+      RoleSessionName: deployProfile // TODO: discuss naming this
     }).promise();
 
-    return assumeRoleResponse.Credentials as STS.Credentials;
+    return Credentials as STS.Credentials;
   }
 
   private validateEnvVars() {
     const unsetEnvVars: string[] = [];
     if(!process.env['AWS_PROFILE']) unsetEnvVars.push('AWS_PROFILE');
-    if(!process.env['REGION']) unsetEnvVars.push('REGION');
+    if(!process.env['SOURCE_REGION']) unsetEnvVars.push('SOURCE_REGION');
     // if(!process.env['SOURCE_ENV']) unsetEnvVars.push('SOURCE_ENV');
     // if(!process.env['DESTINATION_ENV']) unsetEnvVars.push('DESTINATION_ENV');
     if(unsetEnvVars.length > 0) throw new Error(`The following environment variables must be set:\n${unsetEnvVars.join(' ')}`);

@@ -1,0 +1,30 @@
+Bring feature into cdk-resources package
+
+1. associate lambdas in new instance
+  - need lambda arns
+  - need instance id
+2. get previous contact flow
+  - describe-contact-flow
+  - need instance id
+  - use listContactFlows
+    - map name to id
+    - get flow id
+3. update contact flow object InvokeExternalResource modules with new lambda arn
+  - modules.map(module => module.parameters.find(obj => obj.name === 'FunctionArn').replace(oldEnv, newEnv))
+4.  try updateContactFlowContent - if update fails because doesn't exist then
+      use createContactFlow pointed at new instance
+        - {
+          Content: newContactFlowObject,
+          InstanceId: string,
+          Name: string,
+          Type: oldFlow.Metadata.type
+        }
+
+
+
+
+
+
+
+
+auto migrate admin app data
