@@ -1,4 +1,5 @@
 import { Connect, STS, Lambda, Response, AWSError, Credentials } from 'aws-sdk';
+import { PromiseResult } from 'aws-sdk/lib/request';
 
 interface IPromoteContactFlowProps {
   sourceInstanceId: string;
@@ -12,11 +13,6 @@ const SourceEnvConnect = new Connect({
   region: process.env['SOURCE_REGION']
 });
 
-const SourceEnvLambda = new Lambda({
-  apiVersion: '2015-03-31',
-  region: process.env['SOURCE_REGION']
-});
-
 const AwsSTS = new STS({
   region: process.env['SOURCE_REGION']
 });
@@ -27,6 +23,31 @@ interface IAssociateLambdaProps {
   assumeRoleArn: string;
   profile: string;
   destinationRegion: string;
+}
+
+interface IListRoutingProfilesProps {
+  instanceId: string;
+}
+
+interface IRoutingProfile {
+  description?: string;
+  name?: string;
+  defaultOutboundQueueId?: string;
+  mediaConcurrencies?: {
+    Channel?: string;
+    Concurrency?: number;
+  }[];
+  queueConfigs?: {
+    delay?: number;
+    priority?: number;
+    queueReference?: {
+      channel?: 'VOICE' | 'CHAT' | 'TASK';
+      queueId?: string;
+    }
+  }[];
+  tags: {
+    [key: string]: string;
+  };
 }
 
 export class VFConnect {
@@ -103,6 +124,98 @@ export class VFConnect {
     return await Promise.all(lambdaAssociations);
   }
 
+  // TODO: createRoutingProfiles
+  public async createRoutingProfiles(props: any): Promise<void> {
+    /**
+     * required params:
+     * @param DefaultOutboundQueueId
+     * @param Description
+     * @param InstanceId
+     * @param MediaConcurrencies
+     * @param Name
+     * @param QueueConfigs
+     * 
+     */
+    
+  }
+
+  // TODO: getRoutingProfiles
+  public async getRoutingProfiles(props: IListRoutingProfilesProps): Promise<void> {
+    this.validateEnvVars();
+
+    const {
+      instanceId
+    } = props;
+
+    const routingProfileSummaries: Connect.RoutingProfileSummary[] = [];
+    let nextToken = undefined;
+    do {
+      const params: Connect.ListRoutingProfilesRequest = {
+        InstanceId: instanceId,
+        MaxResults: 1000,
+      };
+      if(nextToken) {
+        params.NextToken = nextToken;
+      }
+      const {RoutingProfileSummaryList, NextToken} = await SourceEnvConnect.listRoutingProfiles(params).promise();
+      nextToken = NextToken;
+      RoutingProfileSummaryList?.forEach(summary => routingProfileSummaries.push(summary));
+    } while(nextToken)
+
+    console.log('routingProfileSummaries:', routingProfileSummaries);
+
+    const routingProfilePromises: Connect.DescribeRoutingProfileResponse[] = await Promise.all(
+      routingProfileSummaries.map(summary => {
+        return SourceEnvConnect.describeRoutingProfile({
+          InstanceId: instanceId,
+          RoutingProfileId: summary?.Id as string
+        }).promise();
+      })
+    );
+
+    await Promise.all(routingProfilePromises);
+
+    const routingProfiles: IRoutingProfile[]|{} = routingProfilePromises.map(profile => {
+      console.log('profile:', profile);
+      return {};
+    });
+
+    // const newRoutingProfile: IRoutingProfile = {
+    //   name: RoutingProfile?.Name,
+    //   defaultOutboundQueueId: RoutingProfile?.DefaultOutboundQueueId,
+    //   description: RoutingProfile?.Description,
+    //   mediaConcurrencies: RoutingProfile?.MediaConcurrencies
+    // };
+
+  //   {
+  //     "RoutingProfile": {
+  //         "InstanceId": "2c0e519a-a65c-455b-836b-dd2d3fa07b32",
+  //         "Name": "Sales",
+  //         "RoutingProfileArn": "arn:aws:connect:us-east-1:521208942562:instance/2c0e519a-a65c-455b-836b-dd2d3fa07b32/routing-profile/15b72e69-5c52-4e7d-b15c-4676a60a3d29",
+  //         "RoutingProfileId": "15b72e69-5c52-4e7d-b15c-4676a60a3d29",
+  //         "Description": "Sales routing profile",
+  //         "MediaConcurrencies": [
+  //             {
+  //                 "Channel": "CHAT",
+  //                 "Concurrency": 1
+  //             },
+  //             {
+  //                 "Channel": "TASK",
+  //                 "Concurrency": 1
+  //             },
+  //             {
+  //                 "Channel": "VOICE",
+  //                 "Concurrency": 1
+  //             }
+  //         ],
+  //         "DefaultOutboundQueueId": "77e01463-dfc5-4f40-a8ad-6638684b03e0",
+  //         "Tags": {}
+  //     }
+  // }
+
+  }
+
+  // TODO: promoteContactFlow
   public async promoteContactFlow(props: IPromoteContactFlowProps) {
     this.validateEnvVars();
 
@@ -166,8 +279,6 @@ export class VFConnect {
     const unsetEnvVars: string[] = [];
     if(!process.env['AWS_PROFILE']) unsetEnvVars.push('AWS_PROFILE');
     if(!process.env['SOURCE_REGION']) unsetEnvVars.push('SOURCE_REGION');
-    // if(!process.env['SOURCE_ENV']) unsetEnvVars.push('SOURCE_ENV');
-    // if(!process.env['DESTINATION_ENV']) unsetEnvVars.push('DESTINATION_ENV');
     if(unsetEnvVars.length > 0) throw new Error(`The following environment variables must be set:\n${unsetEnvVars.join(' ')}`);
   }
 }

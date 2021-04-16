@@ -10,9 +10,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "faker": "^5.5.3",
     "luxon": "^1.26.0"
   },
   "devDependencies": {
+    "@types/faker": "^5.5.1",
     "@types/luxon": "^1.26.3"
   }
 }

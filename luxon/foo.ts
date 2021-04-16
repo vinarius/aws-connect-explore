@@ -1,5 +1,5 @@
-import { DateTime } from 'luxon';
+import {date} from 'faker';
 
-const foo = DateTime.local()
+const foo = date.between('2015-11-01', '2015-11-30');
 
-console.log(foo)
+console.log(foo);

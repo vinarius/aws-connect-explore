@@ -12,12 +12,16 @@ import { VFConnect } from './connect';
   const assumeRoleArn = 'arn:aws:iam::538718130184:role/kraus-test-cross-account';
   
   const vfConnect = new VFConnect();
-  await vfConnect.associateLambdas({
-    assumeRoleArn,
-    inputLambdaNames: lambdaNames,
-    destinationInstanceId: krausTeam9InstanceId,
-    profile: process.env['AWS_PROFILE'] as string,
-    destinationRegion: process.env['DESTINATION_REGION'] as string
+  // await vfConnect.associateLambdas({
+  //   assumeRoleArn,
+  //   inputLambdaNames: lambdaNames,
+  //   destinationInstanceId: krausTeam9InstanceId,
+  //   profile: process.env['AWS_PROFILE'] as string,
+  //   destinationRegion: process.env['DESTINATION_REGION'] as string
+  // });
+
+  await vfConnect.getRoutingProfiles({
+    instanceId: krausTeam7InstanceId
   });
 
   // await vfConnect.promoteContactFlow(
